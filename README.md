@@ -108,3 +108,6 @@ python main.py
 ```
 ##🙌 Contributors
 - [@Adezi44](https://github.com/Adezi44)
+- [@Criminson](https://github.com/Criminson)
+- [@Nelson-Nadar-AKA-Crunchy](https://github.com/Nelson-Nadar-AKA-Crunchy)
+- [@GracesonVfx](https://github.com/GracesonVfx)
