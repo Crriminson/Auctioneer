@@ -98,5 +98,13 @@ Leverage **OmniDimension** to create a voice agent that:
 ```bash
   git clone https://github.com/your-username/voice-auction-agent.git
   cd voice-auction-agent
-
+```
 # Set Up Environment
+```bash
+# Example (Node.js)
+npm start
+# or (Python)
+python main.py
+```
+##🙌 Contributors
+- [@your-Adezi44](https://github.com/Adezi44)
