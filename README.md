@@ -79,17 +79,15 @@ Leverage **OmniDimension** to create a voice agent that:
 ---
 
 ## 📁 Project Structure
-voice-auction-agent/
-│
-├── src/ # Voice agent and business logic
-│ ├── agent/ # OmniDimension intents and flows
-│ ├── auction/ # Auction simulation or integration
-│ └── utils/ # Helper modules
-│
-├── data/ # Sample auction items and bids
-├── README.md
-├── package.json / requirements.txt
-└── .env # API keys and configuration
+- Voice-auction-agent/
+ - src/ # Voice agent and business logic
+   - agent/ # OmniDimension intents and flows
+   - auction/ # Auction simulation or integration
+   - utils/ # Helper modules
+- data/ # Sample auction items and bids
+- README.md
+- package.json / requirements.txt
+- .env # API keys and configuration
 
 
 ---
