@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auctioneer - Real-Time Auction Platform</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.0/supabase.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            font-size: 28px;
+            font-weight: bold;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-email {
+            color: #888;
+            font-size: 14px;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(255, 107, 107, 0.3);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 25px rgba(255, 255, 255, 0.1);
+        }
+
+        /* Auth Forms */
+        .auth-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 80vh;
+        }
+
+        .auth-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .auth-title {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #ccc;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            color: white;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #4ecdc4;
+            box-shadow: 0 0 0 3px rgba(78, 205, 196, 0.1);
+        }
+
+        .form-group input::placeholder {
+            color: #888;
+        }
+
+        .auth-switch {
+            text-align: center;
+            margin-top: 20px;
+            color: #888;
+        }
+
+        .auth-switch a {
+            color: #4ecdc4;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .auth-switch a:hover {
+            text-decoration: underline;
+        }
+
+        /* Auction Grid */
+        .auction-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin-top: 30px;
+        }
+
+        .auction-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 25px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .auction-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            border-color: rgba(78, 205, 196, 0.3);
+        }
+
+        .auction-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+        }
+
+        .auction-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        .auction-description {
+            color: #ccc;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .auction-stats {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #4ecdc4;
+        }
+
+        .current-bid {
+            color: #ff6b6b !important;
+        }
+
+        .time-remaining {
+            color: #ffd93d !important;
+        }
+
+        .bid-section {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .bid-input {
+            flex: 1;
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            color: white;
+            font-size: 16px;
+        }
+
+        .bid-input:focus {
+            outline: none;
+            border-color: #4ecdc4;
+        }
+
+        .bid-btn {
+            padding: 10px 20px;
+            font-size: 14px;
+            min-width: 80px;
+        }
+
+        /* Status Messages */
+        .status-message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-weight: 600;
+            z-index: 1000;
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+        }
+
+        .status-message.show {
+            transform: translateX(0);
+        }
+
+        .status-message.error {
+            background: rgba(255, 107, 107, 0.9);
+            border: 1px solid #ff6b6b;
+        }
+
+        .status-message.success {
+            background: rgba(78, 205, 196, 0.9);
+            border: 1px solid #4ecdc4;
+        }
+
+        /* Loading States */
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #888;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid #4ecdc4;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .auction-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .auth-card {
+                padding: 30px 20px;
+            }
+
+            .auction-stats {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .bid-section {
+                flex-direction: column;
+            }
+        }
+
+        /* Hidden class */
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">🏆 Auctioneer</div>
+            <div class="user-info hidden" id="userInfo">
+                <span class="user-email" id="userEmail"></span>
+                <button class="btn btn-secondary" onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <!-- Auth Container -->
+        <div class="auth-container" id="authContainer">
+            <div class="auth-card">
+                <!-- Login Form -->
+                <div id="loginForm">
+                    <h2 class="auth-title">Welcome Back</h2>
+                    <form onsubmit="handleLogin(event)">
+                        <div class="form-group">
+                            <label for="loginEmail">Email</label>
+                            <input type="email" id="loginEmail" placeholder="Enter your email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="loginPassword">Password</label>
+                            <input type="password" id="loginPassword" placeholder="Enter your password" required>
+                        </div>
+                        <button type="submit" class="btn" style="width: 100%;">Sign In</button>
+                    </form>
+                    <div class="auth-switch">
+                        Don't have an account? <a href="#" onclick="showSignup()">Sign up</a>
+                    </div>
+                </div>
+
+                <!-- Signup Form -->
+                <div id="signupForm" class="hidden">
+                    <h2 class="auth-title">Create Account</h2>
+                    <form onsubmit="handleSignup(event)">
+                        <div class="form-group">
+                            <label for="signupEmail">Email</label>
+                            <input type="email" id="signupEmail" placeholder="Enter your email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="signupPassword">Password</label>
+                            <input type="password" id="signupPassword" placeholder="Create a password" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="confirmPassword">Confirm Password</label>
+                            <input type="password" id="confirmPassword" placeholder="Confirm your password" required>
+                        </div>
+                        <button type="submit" class="btn" style="width: 100%;">Sign Up</button>
+                    </form>
+                    <div class="auth-switch">
+                        Already have an account? <a href="#" onclick="showLogin()">Sign in</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Auction Dashboard -->
+        <div id="auctionDashboard" class="hidden">
+            <div class="loading" id="loadingState">
+                <div class="spinner"></div>
+                <p>Loading auctions...</p>
+            </div>
+            
+            <div class="auction-grid" id="auctionGrid">
+                <!-- Auction cards will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Messages -->
+    <div id="statusMessage" class="status-message"></div>
+
+    <script>
+        // Supabase Configuration
+        const supabaseUrl = 'https://hcymzipntbienmdmmjqm.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjeW16aXBudGJpZW5tZG1tanFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2MjI0MjcsImV4cCI6MjA2NjE5ODQyN30.iCH95PpaeF8aO1MNAB9tr72JBZRdDNrzuiASCcFw9ME';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        // Global variables
+        let currentUser = null;
+        let auctions = [];
+        let bidTimers = {};
+
+        // Initialize the app
+        async function init() {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session) {
+                    currentUser = session.user;
+                    showDashboard();
+                } else {
+                    showAuth();
+                }
+            } catch (error) {
+                console.error('Error initializing app:', error);
+                showAuth();
+            }
+        }
+
+        // Auth Functions
+        async function handleLogin(event) {
+            event.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+
+                if (error) throw error;
+                
+                currentUser = data.user;
+                showMessage('Successfully logged in!', 'success');
+                showDashboard();
+            } catch (error) {
+                showMessage(error.message, 'error');
+            }
+        }
+
+        async function handleSignup(event) {
+            event.preventDefault();
+            const email = document.getElementById('signupEmail').value;
+            const password = document.getElementById('signupPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+
+            if (password !== confirmPassword) {
+                showMessage('Passwords do not match!', 'error');
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase.auth.signUp({
+                    email: email,
+                    password: password
+                });
+
+                if (error) throw error;
+                
+                showMessage('Account created successfully! Please check your email to verify your account.', 'success');
+                showLogin();
+            } catch (error) {
+                showMessage(error.message, 'error');
+            }
+        }
+
+        async function logout() {
+            try {
+                const { error } = await supabase.auth.signOut();
+                if (error) throw error;
+                
+                currentUser = null;
+                showMessage('Successfully logged out!', 'success');
+                showAuth();
+            } catch (error) {
+                showMessage(error.message, 'error');
+            }
+        }
+
+        // UI Functions
+        function showAuth() {
+            document.getElementById('authContainer').classList.remove('hidden');
+            document.getElementById('auctionDashboard').classList.add('hidden');
+            document.getElementById('userInfo').classList.add('hidden');
+        }
+
+        function showDashboard() {
+            document.getElementById('authContainer').classList.add('hidden');
+            document.getElementById('auctionDashboard').classList.remove('hidden');
+            document.getElementById('userInfo').classList.remove('hidden');
+            document.getElementById('userEmail').textContent = currentUser.email;
+            loadAuctions();
+        }
+
+        function showLogin() {
+            document.getElementById('loginForm').classList.remove('hidden');
+            document.getElementById('signupForm').classList.add('hidden');
+        }
+
+        function showSignup() {
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('signupForm').classList.remove('hidden');
+        }
+
+        function showMessage(message, type) {
+            const messageEl = document.getElementById('statusMessage');
+            messageEl.textContent = message;
+            messageEl.className = `status-message ${type} show`;
+            
+            setTimeout(() => {
+                messageEl.classList.remove('show');
+            }, 4000);
+        }
+
+        // Auction Functions
+        async function loadAuctions() {
+            try {
+                document.getElementById('loadingState').classList.remove('hidden');
+                
+                // Create sample auctions if none exist
+                await createSampleAuctions();
+                
+                const { data, error } = await supabase
+                    .from('auctions')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+                
+                auctions = data || [];
+                renderAuctions();
+                
+                document.getElementById('loadingState').classList.add('hidden');
+            } catch (error) {
+                console.error('Error loading auctions:', error);
+                showMessage('Failed to load auctions', 'error');
+                document.getElementById('loadingState').classList.add('hidden');
+            }
+        }
+
+        async function createSampleAuctions() {
+            try {
+                const { data: existingAuctions } = await supabase
+                    .from('auctions')
+                    .select('id')
+                    .limit(1);
+
+                if (existingAuctions && existingAuctions.length > 0) {
+                    return; // Auctions already exist
+                }
+
+                const sampleAuctions = [
+                    {
+                        title: "Vintage Rolex Submariner",
+                        description: "Rare 1970s Rolex Submariner in excellent condition. A true collector's piece with original documentation.",
+                        current_bid: 15000,
+                        minimum_bid: 10000,
+                        end_time: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours from now
+                        status: 'active',
+                        bid_count: 12
+                    },
+                    {
+                        title: "MacBook Pro M3 Max",
+                        description: "Brand new MacBook Pro with M3 Max chip, 32GB RAM, 1TB SSD. Still in original packaging.",
+                        current_bid: 2800,
+                        minimum_bid: 2000,
+                        end_time: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(), // 4 hours from now
+                        status: 'active',
+                        bid_count: 8
+                    },
+                    {
+                        title: "Tesla Model S Plaid",
+                        description: "2023 Tesla Model S Plaid with autopilot, low mileage, perfect condition. Fastest production car.",
+                        current_bid: 95000,
+                        minimum_bid: 80000,
+                        end_time: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(), // 6 hours from now
+                        status: 'active',
+                        bid_count: 25
+                    },
+                    {
+                        title: "Rare Pokemon Cards Collection",
+                        description: "Complete set of 1st Edition Base Set Pokemon cards including Charizard. All cards in mint condition.",
+                        current_bid: 12500,
+                        minimum_bid: 8000,
+                        end_time: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(), // 3 hours from now
+                        status: 'active',
+                        bid_count: 18
+                    }
+                ];
+
+                const { error } = await supabase
+                    .from('auctions')
+                    .insert(sampleAuctions);
+
+                if (error) throw error;
+            } catch (error) {
+                console.error('Error creating sample auctions:', error);
+            }
+        }
+
+        function renderAuctions() {
+            const grid = document.getElementById('auctionGrid');
+            grid.innerHTML = '';
+
+            auctions.forEach(auction => {
+                const card = createAuctionCard(auction);
+                grid.appendChild(card);
+                startTimer(auction.id, auction.end_time);
+            });
+        }
+
+        function createAuctionCard(auction) {
+            const card = document.createElement('div');
+            card.className = 'auction-card';
+            card.innerHTML = `
+                <h3 class="auction-title">${auction.title}</h3>
+                <p class="auction-description">${auction.description}</p>
+                <div class="auction-stats">
+                    <div class="stat-item">
+                        <div class="stat-label">Current Bid</div>
+                        <div class="stat-value current-bid">$${auction.current_bid.toLocaleString()}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Bids</div>
+                        <div class="stat-value">${auction.bid_count}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Time Left</div>
+                        <div class="stat-value time-remaining" id="timer-${auction.id}">--:--:--</div>
+                    </div>
+                </div>
+                <div class="bid-section">
+                    <input type="number" class="bid-input" placeholder="Enter bid amount" min="${auction.current_bid + 1}" id="bid-${auction.id}">
+                    <button class="btn bid-btn" onclick="placeBid(${auction.id})">Bid</button>
+                </div>
+            `;
+            return card;
+        }
+
+        function startTimer(auctionId, endTime) {
+            const timerEl = document.getElementById(`timer-${auctionId}`);
+            
+            function updateTimer() {
+                const now = new Date().getTime();
+                const end = new Date(endTime).getTime();
+                const timeLeft = end - now;
+
+                if (timeLeft > 0) {
+                    const hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+                    const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+
+                    timerEl.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                } else {
+                    timerEl.textContent = 'ENDED';
+                    timerEl.style.color = '#ff6b6b';
+                    clearInterval(bidTimers[auctionId]);
+                }
+            }
+
+            updateTimer();
+            bidTimers[auctionId] = setInterval(updateTimer, 1000);
+        }
+
+        async function placeBid(auctionId) {
+            const bidInput = document.getElementById(`bid-${auctionId}`);
+            const bidAmount = parseFloat(bidInput.value);
+            
+            if (!bidAmount || bidAmount <= 0) {
+                showMessage('Please enter a valid bid amount', 'error');
+                return;
+            }
+
+            const auction = auctions.find(a => a.id === auctionId);
+            if (bidAmount <= auction.current_bid) {
+                showMessage(`Bid must be higher than current bid of $${auction.current_bid.toLocaleString()}`, 'error');
+                return;
+            }
+
+            try {
+                // Update auction with new bid
+                const { error: updateError } = await supabase
+                    .from('auctions')
+                    .update({
+                        current_bid: bidAmount,
+                        bid_count: auction.bid_count + 1
+                    })
+                    .eq('id', auctionId);
+
+                if (updateError) throw updateError;
+
+                // Record bid history
+                const { error: bidError } = await supabase
+                    .from('bids')
+                    .insert({
+                        auction_id: auctionId,
+                        user_id: currentUser.id,
+                        amount: bidAmount,
+                        user_email: currentUser.email
+                    });
+
+                if (bidError) throw bidError;
+
+                showMessage(`Bid placed successfully! You bid $${bidAmount.toLocaleString()}`, 'success');
+                bidInput.value = '';
+                loadAuctions(); // Refresh the auctions
+            } catch (error) {
+                console.error('Error placing bid:', error);
+                showMessage('Failed to place bid', 'error');
+            }
+        }
+
+        // Initialize the app when page loads
+        window.onload = init;
+    </script>
+</body>
+</html>
