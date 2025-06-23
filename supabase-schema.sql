@@ -129,6 +129,72 @@ CREATE TRIGGER update_auctions_updated_at
     BEFORE UPDATE ON auctions
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+-- Function to handle placing a bid atomically
+CREATE OR REPLACE FUNCTION place_bid(
+    auction_id_param BIGINT,
+    bid_amount DECIMAL(10,2),
+    user_id_param UUID
+)
+RETURNS TABLE (
+    success BOOLEAN,
+    message TEXT,
+    auction_id BIGINT
+) AS $$
+DECLARE
+    current_auction auctions%ROWTYPE;
+    user_email_param TEXT;
+BEGIN
+    -- Select the auction and lock the row for this transaction
+    SELECT * INTO current_auction FROM auctions WHERE id = auction_id_param FOR UPDATE;
+
+    -- Get user email
+    SELECT email INTO user_email_param FROM auth.users WHERE id = user_id_param;
+
+    -- Check if auction exists
+    IF current_auction IS NULL THEN
+        RETURN QUERY SELECT FALSE, 'Auction not found.', NULL::BIGINT;
+        RETURN;
+    END IF;
+
+    -- Check if auction is active
+    IF current_auction.status != 'active' THEN
+        RETURN QUERY SELECT FALSE, 'Auction is not active.', NULL::BIGINT;
+        RETURN;
+    END IF;
+
+    -- Check if auction has ended
+    IF current_auction.end_time < NOW() THEN
+        RETURN QUERY SELECT FALSE, 'Auction has ended.', NULL::BIGINT;
+        RETURN;
+    END IF;
+
+    -- Check if bid is high enough
+    IF bid_amount <= current_auction.current_bid OR bid_amount < current_auction.minimum_bid THEN
+        RETURN QUERY SELECT FALSE, 'Bid amount must be higher than the current bid and the minimum bid.', NULL::BIGINT;
+        RETURN;
+    END IF;
+
+    -- Update auction with the new bid
+    UPDATE auctions
+    SET 
+        current_bid = bid_amount,
+        bid_count = current_auction.bid_count + 1,
+        updated_at = NOW()
+    WHERE id = auction_id_param;
+
+    -- Insert the new bid into the bids table
+    INSERT INTO bids (auction_id, user_id, user_email, amount)
+    VALUES (auction_id_param, user_id_param, user_email_param, bid_amount);
+
+    -- Return success
+    RETURN QUERY SELECT TRUE, 'Bid placed successfully.', auction_id_param;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN QUERY SELECT FALSE, 'An error occurred while placing the bid.', NULL::BIGINT;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Insert sample auctions for testing
 INSERT INTO auctions (title, description, current_bid, minimum_bid, end_time, status, bid_count) VALUES
 (

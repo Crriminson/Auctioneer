@@ -82,25 +82,28 @@ class BidResponse(BaseModel):
 # WebSocket manager for real-time updates
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: List[WebSocket] = []
+        self.active_connections: Dict[int, List[WebSocket]] = {}
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket, auction_id: int):
         await websocket.accept()
-        self.active_connections.append(websocket)
+        if auction_id not in self.active_connections:
+            self.active_connections[auction_id] = []
+        self.active_connections[auction_id].append(websocket)
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+    def disconnect(self, websocket: WebSocket, auction_id: int):
+        if auction_id in self.active_connections:
+            self.active_connections[auction_id].remove(websocket)
+            if not self.active_connections[auction_id]:
+                del self.active_connections[auction_id]
 
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
-
-    async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(message)
-            except:
-                # Remove broken connections
-                self.active_connections.remove(connection)
+    async def broadcast_to_auction(self, message: str, auction_id: int):
+        if auction_id in self.active_connections:
+            for connection in self.active_connections[auction_id]:
+                try:
+                    await connection.send_text(message)
+                except:
+                    # Remove broken connections
+                    self.disconnect(connection, auction_id)
 
 manager = ConnectionManager()
 
@@ -117,67 +120,11 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-def create_tables():
-    """Create necessary tables in Supabase"""
-    try:
-        # Create auctions table
-        supabase.table('auctions').select('*').limit(1).execute()
-    except:
-        # Table doesn't exist, let's create it via SQL
-        print("Tables need to be created in Supabase dashboard")
-        print("""
-        Run these SQL commands in Supabase SQL Editor:
-        
-        -- Create auctions table
-        CREATE TABLE IF NOT EXISTS auctions (
-            id BIGSERIAL PRIMARY KEY,
-            title TEXT NOT NULL,
-            description TEXT,
-            current_bid DECIMAL(10,2) DEFAULT 0,
-            minimum_bid DECIMAL(10,2) NOT NULL,
-            end_time TIMESTAMP WITH TIME ZONE NOT NULL,
-            status TEXT DEFAULT 'active' CHECK (status IN ('active', 'ended', 'cancelled')),
-            bid_count INTEGER DEFAULT 0,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-
-        -- Create bids table
-        CREATE TABLE IF NOT EXISTS bids (
-            id BIGSERIAL PRIMARY KEY,
-            auction_id BIGINT REFERENCES auctions(id) ON DELETE CASCADE,
-            user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-            user_email TEXT NOT NULL,
-            amount DECIMAL(10,2) NOT NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-
-        -- Create indexes for better performance
-        CREATE INDEX IF NOT EXISTS idx_auctions_status ON auctions(status);
-        CREATE INDEX IF NOT EXISTS idx_auctions_end_time ON auctions(end_time);
-        CREATE INDEX IF NOT EXISTS idx_bids_auction_id ON bids(auction_id);
-        CREATE INDEX IF NOT EXISTS idx_bids_user_id ON bids(user_id);
-
-        -- Enable Row Level Security
-        ALTER TABLE auctions ENABLE ROW LEVEL SECURITY;
-        ALTER TABLE bids ENABLE ROW LEVEL SECURITY;
-
-        -- Create policies for auctions (everyone can read, authenticated users can create)
-        CREATE POLICY "Anyone can view auctions" ON auctions FOR SELECT USING (true);
-        CREATE POLICY "Authenticated users can create auctions" ON auctions FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-        CREATE POLICY "Authenticated users can update auctions" ON auctions FOR UPDATE USING (auth.role() = 'authenticated');
-
-        -- Create policies for bids (everyone can read, authenticated users can create their own)
-        CREATE POLICY "Anyone can view bids" ON bids FOR SELECT USING (true);
-        CREATE POLICY "Authenticated users can create bids" ON bids FOR INSERT WITH CHECK (auth.uid() = user_id);
-        """)
-
 # API Routes
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize the application"""
-    create_tables()
     print("Auctioneer API started successfully!")
 
 @app.get("/")
@@ -269,130 +216,70 @@ async def get_auction(auction_id: int):
 async def create_auction(auction: AuctionCreate, current_user = Depends(get_current_user)):
     """Create a new auction"""
     try:
-        auction_data = {
-            "title": auction.title,
-            "description": auction.description,
-            "minimum_bid": auction.minimum_bid,
-            "current_bid": auction.minimum_bid,
-            "end_time": auction.end_time.isoformat(),
-            "status": "active",
-            "bid_count": 0
-        }
-        
-        response = supabase.table('auctions').insert(auction_data).execute()
+        response = supabase.table('auctions').insert(auction.dict()).select().execute()
         
         if response.data:
-            # Broadcast new auction to all connected clients
-            await manager.broadcast(json.dumps({
-                "type": "new_auction",
-                "data": response.data[0]
-            }))
+            # Broadcast new auction to the relevant auction room (or a general lobby)
+            # For simplicity, we'll just log this for now as there's no "general" room
+            print(f"New auction created: {response.data[0]['id']}")
             return response.data[0]
         else:
             raise HTTPException(status_code=400, detail="Failed to create auction")
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create auction: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.put("/auctions/{auction_id}", response_model=AuctionResponse)
 async def update_auction(auction_id: int, auction: AuctionUpdate, current_user = Depends(get_current_user)):
-    """Update an existing auction"""
+    """Update an auction"""
     try:
-        update_data = {k: v for k, v in auction.dict().items() if v is not None}
+        response = supabase.table('auctions').update(auction.dict(exclude_unset=True)).eq('id', auction_id).execute()
         
-        if update_data:
-            update_data["updated_at"] = datetime.now().isoformat()
-            
-            response = supabase.table('auctions').update(update_data).eq('id', auction_id).execute()
-            
-            if response.data:
-                # Broadcast auction update
-                await manager.broadcast(json.dumps({
-                    "type": "auction_updated",
-                    "data": response.data[0]
-                }))
-                return response.data[0]
-            else:
-                raise HTTPException(status_code=404, detail="Auction not found")
+        if response.data:
+            # Broadcast update via WebSocket
+            await manager.broadcast_to_auction(json.dumps({"type": "auction_update", "data": response.data[0]}), auction_id)
+            return response.data[0]
         else:
-            raise HTTPException(status_code=400, detail="No data provided for update")
-    except HTTPException:
-        raise
+            raise HTTPException(status_code=404, detail="Auction not found")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update auction: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 # Bidding routes
 @app.post("/bids")
 async def place_bid(bid: BidCreate, current_user = Depends(get_current_user)):
     """Place a bid on an auction"""
     try:
-        # First, get the current auction details
-        auction_response = supabase.table('auctions').select('*').eq('id', bid.auction_id).execute()
+        # Call the database function to handle the bid atomically
+        response = supabase.rpc('place_bid', {
+            'auction_id_param': bid.auction_id,
+            'bid_amount': bid.amount,
+            'user_id_param': str(current_user.id)
+        }).execute()
+
+        result = response.data[0]
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['message'])
+
+        # Fetch the updated auction details to broadcast
+        auction_response = supabase.table('auctions').select('*').eq('id', bid.auction_id).single().execute()
         
-        if not auction_response.data:
-            raise HTTPException(status_code=404, detail="Auction not found")
-        
-        auction = auction_response.data[0]
-        
-        # Check if auction is still active
-        if auction['status'] != 'active':
-            raise HTTPException(status_code=400, detail="Auction is not active")
-        
-        # Check if auction has ended
-        if datetime.fromisoformat(auction['end_time'].replace('Z', '+00:00')) <= datetime.now():
-            raise HTTPException(status_code=400, detail="Auction has ended")
-        
-        # Check if bid is higher than current bid
-        if bid.amount <= auction['current_bid']:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Bid must be higher than current bid of ${auction['current_bid']}"
-            )
-        
-        # Create the bid record
-        bid_data = {
-            "auction_id": bid.auction_id,
-            "user_id": current_user.id,
-            "user_email": current_user.email,
-            "amount": bid.amount
-        }
-        
-        bid_response = supabase.table('bids').insert(bid_data).execute()
-        
-        if not bid_response.data:
-            raise HTTPException(status_code=400, detail="Failed to place bid")
-        
-        # Update the auction with new current bid and increment bid count
-        update_response = supabase.table('auctions').update({
-            "current_bid": bid.amount,
-            "bid_count": auction['bid_count'] + 1,
-            "updated_at": datetime.now().isoformat()
-        }).eq('id', bid.auction_id).execute()
-        
-        if update_response.data:
-            # Broadcast the new bid to all connected clients
-            await manager.broadcast(json.dumps({
-                "type": "new_bid",
-                "data": {
-                    "auction_id": bid.auction_id,
-                    "bid": bid_response.data[0],
-                    "auction": update_response.data[0]
-                }
-            }))
-            
-            return {
-                "message": "Bid placed successfully",
-                "bid": bid_response.data[0],
-                "auction": update_response.data[0]
+        # Broadcast the new bid to all clients
+        await manager.broadcast_to_auction(json.dumps({
+            "type": "new_bid",
+            "data": {
+                "auction_id": bid.auction_id,
+                "amount": bid.amount,
+                "user_id": str(current_user.id),
+                "user_email": current_user.email,
+                "auction": auction_response.data
             }
-        else:
-            raise HTTPException(status_code=500, detail="Failed to update auction")
-            
-    except HTTPException:
-        raise
+        }), bid.auction_id)
+
+        return {"message": result['message']}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to place bid: {str(e)}")
+        # Catch exceptions from the RPC call or other issues
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @app.get("/auctions/{auction_id}/bids", response_model=List[BidResponse])
 async def get_auction_bids(auction_id: int, limit: int = 50):
@@ -423,44 +310,35 @@ async def get_user_bids(user_id: str, current_user = Depends(get_current_user)):
 async def get_auction_analytics():
     """Get auction analytics"""
     try:
-        # Total auctions
-        total_auctions = supabase.table('auctions').select('id', count='exact').execute()
+        # This is a placeholder for a more complex analytics query
+        response = supabase.table('auctions').select('status', 'bid_count').execute()
         
-        # Active auctions
-        active_auctions = supabase.table('auctions').select('id', count='exact').eq('status', 'active').execute()
-        
-        # Total bids
-        total_bids = supabase.table('bids').select('id', count='exact').execute()
-        
-        # Top auctions by bid count
-        top_auctions = supabase.table('auctions').select('title', 'bid_count', 'current_bid').order('bid_count', desc=True).limit(10).execute()
-        
+        active_auctions = len([a for a in response.data if a['status'] == 'active'])
+        ended_auctions = len([a for a in response.data if a['status'] == 'ended'])
+        total_bids = sum([a['bid_count'] for a in response.data])
+
         return {
-            "total_auctions": total_auctions.count,
-            "active_auctions": active_auctions.count,
-            "total_bids": total_bids.count,
-            "top_auctions": top_auctions.data
+            "active_auctions": active_auctions,
+            "ended_auctions": ended_auctions,
+            "total_bids": total_bids
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch analytics: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # WebSocket endpoint for real-time updates
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time auction updates"""
-    await manager.connect(websocket)
+@app.websocket("/ws/{auction_id}")
+async def websocket_endpoint(websocket: WebSocket, auction_id: int):
+    await manager.connect(websocket, auction_id)
     try:
         while True:
-            # Keep connection alive
-            data = await websocket.receive_text()
-            # Echo back any received messages (for testing)
-            await websocket.send_text(f"Echo: {data}")
+            # We keep the connection alive, but all broadcasting is done via API endpoints
+            await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        manager.disconnect(websocket, auction_id)
 
 # Background task to end expired auctions
 async def end_expired_auctions():
-    """Background task to automatically end expired auctions"""
+    """Background task to end auctions that have passed their end time"""
     while True:
         try:
             current_time = datetime.now()
@@ -477,10 +355,10 @@ async def end_expired_auctions():
                     }).eq('id', auction['id']).execute()
                     
                     # Broadcast auction end
-                    await manager.broadcast(json.dumps({
+                    await manager.broadcast_to_auction(json.dumps({
                         "type": "auction_ended",
                         "data": auction
-                    }))
+                    }), auction['id'])
             
             # Sleep for 30 seconds before checking again
             await asyncio.sleep(30)

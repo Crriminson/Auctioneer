@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Auctioneer - Real-Time Auction Platform</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.0/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
             margin: 0;
@@ -424,23 +424,74 @@
     <div id="statusMessage" class="status-message"></div>
 
     <script>
-        // Supabase Configuration
-        const supabaseUrl = 'https://hcymzipntbienmdmmjqm.supabase.co';
-        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjeW16aXBudGJpZW5tZG1tanFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2MjI0MjcsImV4cCI6MjA2NjE5ODQyN30.iCH95PpaeF8aO1MNAB9tr72JBZRdDNrzuiASCcFw9ME';
-        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
-
-        // Global variables
+        const API_URL = 'http://localhost:8000';
+        let webSocket;
         let currentUser = null;
         let auctions = [];
         let bidTimers = {};
+        let supabaseClient;
 
         // Initialize the app
+        document.addEventListener('DOMContentLoaded', () => {
+            const supabaseUrl = "https://hcymzipntbienmdmmjqm.supabase.co";
+            const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjeW16aXBudGJpZW5tZG1tanFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2MjI0MjcsImV4cCI6MjA2NjE5ODQyN30.iCH95PpaeF8aO1MNAB9tr72JBZRdDNrzuiASCcFw9ME";
+            if (typeof window.supabase === 'undefined') {
+                console.error('Supabase library not loaded');
+                showMessage('Failed to load Supabase library', 'error');
+                return;
+            }
+            try {
+                supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+                init();
+            } catch (error) {
+                console.error('Supabase client initialization failed:', error);
+                showMessage('Failed to initialize Supabase client', 'error');
+            }
+        });
+
+        function connectWebSocket(auctionId) {
+            if (webSocket) {
+                webSocket.close();
+            }
+            
+            const wsUrl = `ws://localhost:8000/ws/${auctionId}`;
+            webSocket = new WebSocket(wsUrl);
+
+            webSocket.onopen = () => {
+                console.log(`Connected to WebSocket for auction ${auctionId}`);
+            };
+
+            webSocket.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                console.log('WebSocket message received:', message);
+
+                if (message.type === 'new_bid' || message.type === 'auction_update') {
+                    updateAuctionCard(message.data.auction);
+                } else if (message.type === 'auction_ended') {
+                    const card = document.getElementById(`auction-${message.data.id}`);
+                    if (card) {
+                        card.style.opacity = '0.5';
+                        card.querySelector('.time-remaining').textContent = 'Ended';
+                    }
+                }
+            };
+
+            webSocket.onclose = () => {
+                console.log('WebSocket disconnected');
+            };
+
+            webSocket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+
         async function init() {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
+                const { data: { session } } = await supabaseClient.auth.getSession();
                 if (session) {
                     currentUser = session.user;
-                    showDashboard();
+                    showUserInfo();
+                    connectWebSocket(1); // Connect to a default auction room
                 } else {
                     showAuth();
                 }
@@ -457,7 +508,7 @@
             const password = document.getElementById('loginPassword').value;
 
             try {
-                const { data, error } = await supabase.auth.signInWithPassword({
+                const { data, error } = await supabaseClient.auth.signInWithPassword({
                     email: email,
                     password: password
                 });
@@ -484,7 +535,7 @@
             }
 
             try {
-                const { data, error } = await supabase.auth.signUp({
+                const { data, error } = await supabaseClient.auth.signUp({
                     email: email,
                     password: password
                 });
@@ -500,7 +551,7 @@
 
         async function logout() {
             try {
-                const { error } = await supabase.auth.signOut();
+                const { error } = await supabaseClient.auth.signOut();
                 if (error) throw error;
                 
                 currentUser = null;
@@ -554,7 +605,7 @@
                 // Create sample auctions if none exist
                 await createSampleAuctions();
                 
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('auctions')
                     .select('*')
                     .order('created_at', { ascending: false });
@@ -574,61 +625,61 @@
 
         async function createSampleAuctions() {
             try {
-                const { data: existingAuctions } = await supabase
+                const { data: existingAuctions } = await supabaseClient
                     .from('auctions')
                     .select('id')
                     .limit(1);
 
-                if (existingAuctions && existingAuctions.length > 0) {
-                    return; // Auctions already exist
-                }
+                if (existingAuctions.length === 0) {
+                    const sampleAuctions = [
+                        {
+                            title: "Vintage Rolex Submariner",
+                            description: "Rare 1970s Rolex Submariner in excellent condition. A true collector's piece with original documentation.",
+                            current_bid: 15000,
+                            minimum_bid: 10000,
+                            end_time: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours from now
+                            status: 'active',
+                            bid_count: 12
+                        },
+                        {
+                            title: "MacBook Pro M3 Max",
+                            description: "Brand new MacBook Pro with M3 Max chip, 32GB RAM, 1TB SSD. Still in original packaging.",
+                            current_bid: 2800,
+                            minimum_bid: 2000,
+                            end_time: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(), // 4 hours from now
+                            status: 'active',
+                            bid_count: 8
+                        },
+                        {
+                            title: "Tesla Model S Plaid",
+                            description: "2023 Tesla Model S Plaid with autopilot, low mileage, perfect condition. Fastest production car.",
+                            current_bid: 95000,
+                            minimum_bid: 80000,
+                            end_time: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(), // 6 hours from now
+                            status: 'active',
+                            bid_count: 25
+                        },
+                        {
+                            title: "Rare Pokemon Cards Collection",
+                            description: "Complete set of 1st Edition Base Set Pokemon cards including Charizard. All cards in mint condition.",
+                            current_bid: 12500,
+                            minimum_bid: 8000,
+                            end_time: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(), // 3 hours from now
+                            status: 'active',
+                            bid_count: 18
+                        }
+                    ];
 
-                const sampleAuctions = [
-                    {
-                        title: "Vintage Rolex Submariner",
-                        description: "Rare 1970s Rolex Submariner in excellent condition. A true collector's piece with original documentation.",
-                        current_bid: 15000,
-                        minimum_bid: 10000,
-                        end_time: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours from now
-                        status: 'active',
-                        bid_count: 12
-                    },
-                    {
-                        title: "MacBook Pro M3 Max",
-                        description: "Brand new MacBook Pro with M3 Max chip, 32GB RAM, 1TB SSD. Still in original packaging.",
-                        current_bid: 2800,
-                        minimum_bid: 2000,
-                        end_time: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(), // 4 hours from now
-                        status: 'active',
-                        bid_count: 8
-                    },
-                    {
-                        title: "Tesla Model S Plaid",
-                        description: "2023 Tesla Model S Plaid with autopilot, low mileage, perfect condition. Fastest production car.",
-                        current_bid: 95000,
-                        minimum_bid: 80000,
-                        end_time: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(), // 6 hours from now
-                        status: 'active',
-                        bid_count: 25
-                    },
-                    {
-                        title: "Rare Pokemon Cards Collection",
-                        description: "Complete set of 1st Edition Base Set Pokemon cards including Charizard. All cards in mint condition.",
-                        current_bid: 12500,
-                        minimum_bid: 8000,
-                        end_time: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(), // 3 hours from now
-                        status: 'active',
-                        bid_count: 18
+                    const { error } = await supabaseClient
+                        .from('auctions')
+                        .insert(sampleAuctions);
+                    
+                    if (error) {
+                        console.error("Error creating sample auctions:", error);
                     }
-                ];
-
-                const { error } = await supabase
-                    .from('auctions')
-                    .insert(sampleAuctions);
-
-                if (error) throw error;
+                }
             } catch (error) {
-                console.error('Error creating sample auctions:', error);
+                console.error("Error checking/creating sample auctions:", error);
             }
         }
 
@@ -713,7 +764,7 @@
 
             try {
                 // Update auction with new bid
-                const { error: updateError } = await supabase
+                const { error: updateError } = await supabaseClient
                     .from('auctions')
                     .update({
                         current_bid: bidAmount,
@@ -724,7 +775,7 @@
                 if (updateError) throw updateError;
 
                 // Record bid history
-                const { error: bidError } = await supabase
+                const { error: bidError } = await supabaseClient
                     .from('bids')
                     .insert({
                         auction_id: auctionId,
