@@ -107,4 +107,4 @@ npm start
 python main.py
 ```
 ##🙌 Contributors
-- [@your-Adezi44](https://github.com/Adezi44)
+- [@Adezi44](https://github.com/Adezi44)
