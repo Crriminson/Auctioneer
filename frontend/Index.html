@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Auctioneer - Real-Time Auction Platform</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
             margin: 0;
@@ -18,12 +19,15 @@
             color: #ffffff;
             min-height: 100vh;
             overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
         }
 
         .container {
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
+            flex: 1;
         }
 
         /* Header */
@@ -43,6 +47,13 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo i {
+            font-size: 32px;
         }
 
         .user-info {
@@ -83,6 +94,36 @@
         .btn-secondary:hover {
             background: rgba(255, 255, 255, 0.2);
             box-shadow: 0 8px 25px rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        /* Navigation */
+        .nav {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .nav-item {
+            color: #ccc;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .nav-item:hover, .nav-item.active {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .nav-item i {
+            margin-right: 8px;
         }
 
         /* Auth Forms */
@@ -314,6 +355,118 @@
             100% { transform: rotate(360deg); }
         }
 
+        /* Footer */
+        .footer {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 20px 0;
+            margin-top: 50px;
+            text-align: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .footer-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 20px;
+        }
+
+        .footer-link {
+            color: #888;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .footer-link:hover {
+            color: #4ecdc4;
+        }
+
+        .copyright {
+            color: #666;
+            font-size: 14px;
+        }
+
+        /* Voice Assistant */
+        .voice-assistant {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 1000;
+        }
+
+        .voice-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .voice-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .voice-btn.listening {
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(255, 107, 107, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0); }
+        }
+
+        .voice-feedback {
+            position: absolute;
+            bottom: 80px;
+            right: 0;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 300px;
+            display: none;
+        }
+
+        .voice-feedback.show {
+            display: block;
+        }
+
+        /* Create Auction Form */
+        .create-auction-form {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 30px;
+            margin-top: 30px;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .form-col {
+            flex: 1;
+        }
+
         /* Responsive Design */
         @media (max-width: 768px) {
             .container {
@@ -341,6 +494,17 @@
             .bid-section {
                 flex-direction: column;
             }
+
+            .form-row {
+                flex-direction: column;
+                gap: 0;
+            }
+
+            .voice-btn {
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+            }
         }
 
         /* Hidden class */
@@ -353,12 +517,31 @@
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <div class="logo">🏆 Auctioneer</div>
+            <div class="logo">
+                <i class="fas fa-gavel"></i>
+                <span>Auctioneer</span>
+            </div>
             <div class="user-info hidden" id="userInfo">
                 <span class="user-email" id="userEmail"></span>
                 <button class="btn btn-secondary" onclick="logout()">Logout</button>
             </div>
         </div>
+
+        <!-- Navigation -->
+        <nav class="nav hidden" id="mainNav">
+            <a href="#" class="nav-item active" onclick="showSection('auctions')">
+                <i class="fas fa-home"></i> Home
+            </a>
+            <a href="#" class="nav-item" onclick="showSection('myBids')">
+                <i class="fas fa-hand-paper"></i> My Bids
+            </a>
+            <a href="#" class="nav-item" onclick="showSection('createAuction')">
+                <i class="fas fa-plus-circle"></i> Create Auction
+            </a>
+            <a href="#" class="nav-item" onclick="showSection('profile')">
+                <i class="fas fa-user"></i> Profile
+            </a>
+        </nav>
 
         <!-- Auth Container -->
         <div class="auth-container" id="authContainer">
@@ -407,17 +590,148 @@
             </div>
         </div>
 
-        <!-- Auction Dashboard -->
-        <div id="auctionDashboard" class="hidden">
-            <div class="loading" id="loadingState">
-                <div class="spinner"></div>
-                <p>Loading auctions...</p>
+        <!-- Main Content Sections -->
+        <div id="mainContent" class="hidden">
+            <!-- Auctions Section -->
+            <div id="auctionsSection">
+                <div class="loading" id="loadingState">
+                    <div class="spinner"></div>
+                    <p>Loading auctions...</p>
+                </div>
+                
+                <div class="auction-grid" id="auctionGrid">
+                    <!-- Auction cards will be populated here -->
+                </div>
             </div>
-            
-            <div class="auction-grid" id="auctionGrid">
-                <!-- Auction cards will be populated here -->
+
+            <!-- My Bids Section -->
+            <div id="myBidsSection" class="hidden">
+                <h2><i class="fas fa-hand-paper"></i> My Bids</h2>
+                <div class="loading" id="bidsLoadingState">
+                    <div class="spinner"></div>
+                    <p>Loading your bids...</p>
+                </div>
+                <div id="myBidsList"></div>
+            </div>
+
+            <!-- Create Auction Section -->
+            <div id="createAuctionSection" class="hidden">
+                <h2><i class="fas fa-plus-circle"></i> Create New Auction</h2>
+                <form class="create-auction-form" onsubmit="handleCreateAuction(event)">
+                    <div class="form-row">
+                        <div class="form-col">
+                            <div class="form-group">
+                                <label for="auctionTitle">Title</label>
+                                <input type="text" id="auctionTitle" placeholder="Enter auction title" required>
+                            </div>
+                        </div>
+                        <div class="form-col">
+                            <div class="form-group">
+                                <label for="auctionCategory">Category</label>
+                                <input type="text" id="auctionCategory" placeholder="e.g. Electronics, Art, etc." required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="auctionDescription">Description</label>
+                        <textarea id="auctionDescription" class="form-control" rows="4" placeholder="Describe the item in detail" required></textarea>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-col">
+                            <div class="form-group">
+                                <label for="startingBid">Starting Bid ($)</label>
+                                <input type="number" id="startingBid" min="1" step="0.01" required>
+                            </div>
+                        </div>
+                        <div class="form-col">
+                            <div class="form-group">
+                                <label for="bidIncrement">Minimum Bid Increment ($)</label>
+                                <input type="number" id="bidIncrement" min="1" step="0.01" required>
+                            </div>
+                        </div>
+                        <div class="form-col">
+                            <div class="form-group">
+                                <label for="endTime">End Time</label>
+                                <input type="datetime-local" id="endTime" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="auctionImage">Image URL</label>
+                        <input type="url" id="auctionImage" placeholder="https://example.com/image.jpg">
+                    </div>
+                    
+                    <button type="submit" class="btn" style="width: 100%;">Create Auction</button>
+                </form>
+            </div>
+
+            <!-- Profile Section -->
+            <div id="profileSection" class="hidden">
+                <h2><i class="fas fa-user"></i> My Profile</h2>
+                <div class="profile-info">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <div id="profileEmail" class="profile-value"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Account Created</label>
+                        <div id="profileCreated" class="profile-value"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Auctions Won</label>
+                        <div id="auctionsWon" class="profile-value">0</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Total Bids Placed</label>
+                        <div id="totalBids" class="profile-value">0</div>
+                    </div>
+                </div>
+                
+                <h3 style="margin-top: 30px;">Account Settings</h3>
+                <form onsubmit="handleChangePassword(event)">
+                    <div class="form-group">
+                        <label for="currentPassword">Current Password</label>
+                        <input type="password" id="currentPassword" placeholder="Enter current password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="newPassword">New Password</label>
+                        <input type="password" id="newPassword" placeholder="Enter new password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="confirmNewPassword">Confirm New Password</label>
+                        <input type="password" id="confirmNewPassword" placeholder="Confirm new password" required>
+                    </div>
+                    <button type="submit" class="btn btn-secondary">Change Password</button>
+                </form>
             </div>
         </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container footer-content">
+            <div class="footer-links">
+                <a href="#" class="footer-link">About Us</a>
+                <a href="#" class="footer-link">Terms of Service</a>
+                <a href="#" class="footer-link">Privacy Policy</a>
+                <a href="#" class="footer-link">Contact</a>
+                <a href="#" class="footer-link">Help Center</a>
+            </div>
+            <div class="copyright">
+                &copy; 2023 Auctioneer. All rights reserved.
+            </div>
+        </div>
+    </footer>
+
+    <!-- Voice Assistant -->
+    <div class="voice-assistant">
+        <div class="voice-feedback" id="voiceFeedback"></div>
+        <button class="voice-btn" id="voiceBtn" title="Voice Bid Assistant">
+            <i class="fas fa-microphone"></i>
+        </button>
     </div>
 
     <!-- Status Messages -->
@@ -430,24 +744,123 @@
         let auctions = [];
         let bidTimers = {};
         let supabaseClient;
+        let recognition;
+        let currentAuctionForVoice = null;
 
         // Initialize the app
         document.addEventListener('DOMContentLoaded', () => {
             const supabaseUrl = "https://hcymzipntbienmdmmjqm.supabase.co";
             const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjeW16aXBudGJpZW5tZG1tanFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2MjI0MjcsImV4cCI6MjA2NjE5ODQyN30.iCH95PpaeF8aO1MNAB9tr72JBZRdDNrzuiASCcFw9ME";
-            if (typeof window.supabase === 'undefined') {
-                console.error('Supabase library not loaded');
-                showMessage('Failed to load Supabase library', 'error');
-                return;
-            }
+            
             try {
                 supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+                initVoiceRecognition();
                 init();
             } catch (error) {
                 console.error('Supabase client initialization failed:', error);
                 showMessage('Failed to initialize Supabase client', 'error');
             }
         });
+
+        function initVoiceRecognition() {
+            try {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = 'en-US';
+
+                recognition.onstart = () => {
+                    document.getElementById('voiceBtn').classList.add('listening');
+                    showVoiceFeedback("Listening... Speak now");
+                };
+
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript.toLowerCase().trim();
+                    showVoiceFeedback(`You said: "${transcript}"`);
+                    processVoiceCommand(transcript);
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('Speech recognition error', event.error);
+                    showVoiceFeedback(`Error: ${event.error}`);
+                    document.getElementById('voiceBtn').classList.remove('listening');
+                };
+
+                recognition.onend = () => {
+                    document.getElementById('voiceBtn').classList.remove('listening');
+                };
+
+                document.getElementById('voiceBtn').addEventListener('click', () => {
+                    if (document.getElementById('voiceBtn').classList.contains('listening')) {
+                        recognition.stop();
+                        return;
+                    }
+                    
+                    if (!currentAuctionForVoice) {
+                        showVoiceFeedback("Please select an auction first by clicking on it");
+                        return;
+                    }
+                    
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        console.error('Speech recognition start failed:', e);
+                        showVoiceFeedback("Voice recognition not supported in your browser");
+                    }
+                });
+            } catch (e) {
+                console.error('Speech recognition not supported', e);
+                document.getElementById('voiceBtn').style.display = 'none';
+            }
+        }
+
+        function showVoiceFeedback(message) {
+            const feedback = document.getElementById('voiceFeedback');
+            feedback.textContent = message;
+            feedback.classList.add('show');
+            
+            setTimeout(() => {
+                feedback.classList.remove('show');
+            }, 3000);
+        }
+
+        function processVoiceCommand(transcript) {
+            if (!currentAuctionForVoice) {
+                showVoiceFeedback("No auction selected. Click on an auction first");
+                return;
+            }
+
+            // Extract bid amount from speech
+            const amountMatch = transcript.match(/(\d+)/);
+            if (!amountMatch) {
+                showVoiceFeedback("Couldn't detect a bid amount. Try saying 'bid 100 dollars'");
+                return;
+            }
+
+            const amount = parseInt(amountMatch[1]);
+            const auction = auctions.find(a => a.id === currentAuctionForVoice);
+            
+            if (!auction) {
+                showVoiceFeedback("Auction not found");
+                return;
+            }
+
+            if (amount <= auction.current_bid) {
+                showVoiceFeedback(`Bid must be higher than current bid of $${auction.current_bid}`);
+                return;
+            }
+
+            // Set the bid amount in the input field and trigger the bid
+            const bidInput = document.getElementById(`bid-${auction.id}`);
+            if (bidInput) {
+                bidInput.value = amount;
+                placeBid(auction.id);
+                showVoiceFeedback(`Bidding $${amount} on "${auction.title}"`);
+            } else {
+                showVoiceFeedback("Couldn't find bid input for this auction");
+            }
+        }
 
         function connectWebSocket(auctionId) {
             if (webSocket) {
@@ -565,16 +978,55 @@
         // UI Functions
         function showAuth() {
             document.getElementById('authContainer').classList.remove('hidden');
-            document.getElementById('auctionDashboard').classList.add('hidden');
+            document.getElementById('mainContent').classList.add('hidden');
+            document.getElementById('mainNav').classList.add('hidden');
             document.getElementById('userInfo').classList.add('hidden');
         }
 
         function showDashboard() {
             document.getElementById('authContainer').classList.add('hidden');
-            document.getElementById('auctionDashboard').classList.remove('hidden');
+            document.getElementById('mainContent').classList.remove('hidden');
+            document.getElementById('mainNav').classList.remove('hidden');
             document.getElementById('userInfo').classList.remove('hidden');
             document.getElementById('userEmail').textContent = currentUser.email;
-            loadAuctions();
+            showSection('auctions');
+            loadProfileData();
+        }
+
+        function showSection(sectionId) {
+            // Hide all sections
+            document.getElementById('auctionsSection').classList.add('hidden');
+            document.getElementById('myBidsSection').classList.add('hidden');
+            document.getElementById('createAuctionSection').classList.add('hidden');
+            document.getElementById('profileSection').classList.add('hidden');
+            
+            // Update active nav item
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            // Show selected section
+            switch(sectionId) {
+                case 'auctions':
+                    document.getElementById('auctionsSection').classList.remove('hidden');
+                    document.querySelector('.nav-item[onclick="showSection(\'auctions\')"]').classList.add('active');
+                    loadAuctions();
+                    break;
+                case 'myBids':
+                    document.getElementById('myBidsSection').classList.remove('hidden');
+                    document.querySelector('.nav-item[onclick="showSection(\'myBids\')"]').classList.add('active');
+                    loadMyBids();
+                    break;
+                case 'createAuction':
+                    document.getElementById('createAuctionSection').classList.remove('hidden');
+                    document.querySelector('.nav-item[onclick="showSection(\'createAuction\')"]').classList.add('active');
+                    break;
+                case 'profile':
+                    document.getElementById('profileSection').classList.remove('hidden');
+                    document.querySelector('.nav-item[onclick="showSection(\'profile\')"]').classList.add('active');
+                    loadProfileData();
+                    break;
+            }
         }
 
         function showLogin() {
@@ -595,6 +1047,10 @@
             setTimeout(() => {
                 messageEl.classList.remove('show');
             }, 4000);
+        }
+
+        function showUserInfo() {
+            document.getElementById('userEmail').textContent = currentUser.email;
         }
 
         // Auction Functions
@@ -639,7 +1095,8 @@
                             minimum_bid: 10000,
                             end_time: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours from now
                             status: 'active',
-                            bid_count: 12
+                            bid_count: 12,
+                            category: "Watches"
                         },
                         {
                             title: "MacBook Pro M3 Max",
@@ -648,7 +1105,8 @@
                             minimum_bid: 2000,
                             end_time: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(), // 4 hours from now
                             status: 'active',
-                            bid_count: 8
+                            bid_count: 8,
+                            category: "Electronics"
                         },
                         {
                             title: "Tesla Model S Plaid",
@@ -657,7 +1115,8 @@
                             minimum_bid: 80000,
                             end_time: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(), // 6 hours from now
                             status: 'active',
-                            bid_count: 25
+                            bid_count: 25,
+                            category: "Vehicles"
                         },
                         {
                             title: "Rare Pokemon Cards Collection",
@@ -666,7 +1125,8 @@
                             minimum_bid: 8000,
                             end_time: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(), // 3 hours from now
                             status: 'active',
-                            bid_count: 18
+                            bid_count: 18,
+                            category: "Collectibles"
                         }
                     ];
 
@@ -697,6 +1157,9 @@
         function createAuctionCard(auction) {
             const card = document.createElement('div');
             card.className = 'auction-card';
+            card.id = `auction-${auction.id}`;
+            card.onclick = () => { currentAuctionForVoice = auction.id; };
+            
             card.innerHTML = `
                 <h3 class="auction-title">${auction.title}</h3>
                 <p class="auction-description">${auction.description}</p>
@@ -795,8 +1258,218 @@
             }
         }
 
-        // Initialize the app when page loads
-        window.onload = init;
+        function updateAuctionCard(auctionData) {
+            const auctionIndex = auctions.findIndex(a => a.id === auctionData.id);
+            if (auctionIndex !== -1) {
+                auctions[auctionIndex] = auctionData;
+            }
+            
+            const currentBidElement = document.querySelector(`#auction-${auctionData.id} .current-bid`);
+            const bidCountElement = document.querySelector(`#auction-${auctionData.id} .stat-value:not(.current-bid):not(.time-remaining)`);
+            
+            if (currentBidElement) {
+                currentBidElement.textContent = `$${auctionData.current_bid.toLocaleString()}`;
+            }
+            
+            if (bidCountElement) {
+                bidCountElement.textContent = auctionData.bid_count;
+            }
+        }
+
+        // My Bids Functions
+        async function loadMyBids() {
+            try {
+                document.getElementById('bidsLoadingState').classList.remove('hidden');
+                document.getElementById('myBidsList').innerHTML = '';
+                
+                const { data: bidsData, error: bidsError } = await supabaseClient
+                    .from('bids')
+                    .select('*')
+                    .eq('user_id', currentUser.id)
+                    .order('created_at', { ascending: false });
+
+                if (bidsError) throw bidsError;
+                
+                const { data: auctionsData, error: auctionsError } = await supabaseClient
+                    .from('auctions')
+                    .select('*')
+                    .in('id', bidsData.map(bid => bid.auction_id));
+
+                if (auctionsError) throw auctionsError;
+                
+                const bidsList = document.getElementById('myBidsList');
+                
+                if (bidsData.length === 0) {
+                    bidsList.innerHTML = '<p>You have not placed any bids yet.</p>';
+                    document.getElementById('bidsLoadingState').classList.add('hidden');
+                    return;
+                }
+                
+                // Group bids by auction
+                const bidsByAuction = {};
+                bidsData.forEach(bid => {
+                    if (!bidsByAuction[bid.auction_id]) {
+                        bidsByAuction[bid.auction_id] = [];
+                    }
+                    bidsByAuction[bid.auction_id].push(bid);
+                });
+                
+                // Create cards for each auction with bids
+                auctionsData.forEach(auction => {
+                    const auctionBids = bidsByAuction[auction.id] || [];
+                    if (auctionBids.length === 0) return;
+                    
+                    const card = document.createElement('div');
+                    card.className = 'auction-card';
+                    card.innerHTML = `
+                        <h3 class="auction-title">${auction.title}</h3>
+                        <p class="auction-description">${auction.description}</p>
+                        <div class="auction-stats">
+                            <div class="stat-item">
+                                <div class="stat-label">Current Bid</div>
+                                <div class="stat-value current-bid">$${auction.current_bid.toLocaleString()}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Your Bids</div>
+                                <div class="stat-value">${auctionBids.length}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Your Highest</div>
+                                <div class="stat-value">$${Math.max(...auctionBids.map(b => b.amount)).toLocaleString()}</div>
+                            </div>
+                        </div>
+                        <h4 style="margin-top: 20px; margin-bottom: 10px;">Your Bid History</h4>
+                        <ul style="list-style-type: none;">
+                            ${auctionBids.map(bid => `
+                                <li style="padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                    $${bid.amount.toLocaleString()} - ${new Date(bid.created_at).toLocaleString()}
+                                </li>
+                            `).join('')}
+                        </ul>
+                    `;
+                    bidsList.appendChild(card);
+                });
+                
+                document.getElementById('bidsLoadingState').classList.add('hidden');
+            } catch (error) {
+                console.error('Error loading bids:', error);
+                showMessage('Failed to load your bids', 'error');
+                document.getElementById('bidsLoadingState').classList.add('hidden');
+            }
+        }
+
+        // Create Auction Functions
+        async function handleCreateAuction(event) {
+            event.preventDefault();
+            
+            const title = document.getElementById('auctionTitle').value;
+            const description = document.getElementById('auctionDescription').value;
+            const startingBid = parseFloat(document.getElementById('startingBid').value);
+            const bidIncrement = parseFloat(document.getElementById('bidIncrement').value);
+            const endTime = document.getElementById('endTime').value;
+            const category = document.getElementById('auctionCategory').value;
+            const imageUrl = document.getElementById('auctionImage').value;
+            
+            if (startingBid <= 0 || bidIncrement <= 0) {
+                showMessage('Bid amounts must be positive numbers', 'error');
+                return;
+            }
+            
+            if (new Date(endTime) < new Date()) {
+                showMessage('End time must be in the future', 'error');
+                return;
+            }
+            
+            try {
+                const { data, error } = await supabaseClient
+                    .from('auctions')
+                    .insert([{
+                        title,
+                        description,
+                        current_bid: startingBid,
+                        minimum_bid: bidIncrement,
+                        end_time: endTime,
+                        status: 'active',
+                        bid_count: 0,
+                        category,
+                        image_url: imageUrl,
+                        created_by: currentUser.id
+                    }])
+                    .select();
+                
+                if (error) throw error;
+                
+                showMessage('Auction created successfully!', 'success');
+                document.getElementById('createAuctionForm').reset();
+                showSection('auctions');
+            } catch (error) {
+                console.error('Error creating auction:', error);
+                showMessage('Failed to create auction', 'error');
+            }
+        }
+
+        // Profile Functions
+        async function loadProfileData() {
+            try {
+                // Get user info
+                document.getElementById('profileEmail').textContent = currentUser.email;
+                document.getElementById('profileCreated').textContent = new Date(currentUser.created_at).toLocaleString();
+                
+                // Get bids count
+                const { count: bidsCount, error: bidsError } = await supabaseClient
+                    .from('bids')
+                    .select('*', { count: 'exact' })
+                    .eq('user_id', currentUser.id);
+                
+                if (bidsError) throw bidsError;
+                document.getElementById('totalBids').textContent = bidsCount || 0;
+                
+                // Get auctions won count (simplified - in real app you'd need to check ended auctions where user had highest bid)
+                document.getElementById('auctionsWon').textContent = '0'; // Placeholder
+                
+            } catch (error) {
+                console.error('Error loading profile data:', error);
+                showMessage('Failed to load profile data', 'error');
+            }
+        }
+
+        async function handleChangePassword(event) {
+            event.preventDefault();
+            
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmNewPassword = document.getElementById('confirmNewPassword').value;
+            
+            if (newPassword !== confirmNewPassword) {
+                showMessage('New passwords do not match', 'error');
+                return;
+            }
+            
+            try {
+                // First verify current password
+                const { error: signInError } = await supabaseClient.auth.signInWithPassword({
+                    email: currentUser.email,
+                    password: currentPassword
+                });
+                
+                if (signInError) throw signInError;
+                
+                // Then update password
+                const { error: updateError } = await supabaseClient.auth.updateUser({
+                    password: newPassword
+                });
+                
+                if (updateError) throw updateError;
+                
+                showMessage('Password changed successfully!', 'success');
+                document.getElementById('currentPassword').value = '';
+                document.getElementById('newPassword').value = '';
+                document.getElementById('confirmNewPassword').value = '';
+            } catch (error) {
+                console.error('Error changing password:', error);
+                showMessage(error.message || 'Failed to change password', 'error');
+            }
+        }
     </script>
 </body>
 </html>
