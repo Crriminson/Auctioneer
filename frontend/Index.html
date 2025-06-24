@@ -511,6 +511,14 @@
         .hidden {
             display: none !important;
         }
+
+        /* Force Omnidimension widget to be visible and on top */
+        #omnidimension-web-widget, .omnidimension-widget, .omnidimension-widget * {
+          display: block !important;
+          opacity: 1 !important;
+          visibility: visible !important;
+          z-index: 9999 !important;
+        }
     </style>
 </head>
 <body>
@@ -736,6 +744,49 @@
 
     <!-- Status Messages -->
     <div id="statusMessage" class="status-message"></div>
+
+    <!-- Omnidimension Voice Widget Integration (force visible) -->
+    <script id="omnidimension-web-widget" async src="https://backend.omnidim.io/web_widget.js?secret_key=ec21a1cec126397ada88647c4efe2a79"></script>
+    <style>
+      /* Force Omnidimension widget to be visible and on top */
+      #omnidimension-web-widget, .omnidimension-widget, .omnidimension-widget * {
+        display: block !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        z-index: 9999 !important;
+      }
+    </style>
+    <!-- End Omnidimension Voice Widget Integration -->
+
+    <!-- Omnidimension Voice Chat Integration for Auction Listings (Final: Use frontend's auctions array for instant response) -->
+    <script>
+    window.addEventListener('omnidimension-ready', function() {
+        if (!window.omnidimensionWebWidget || typeof window.omnidimensionWebWidget.on !== 'function') return;
+        window.omnidimensionWebWidget.on('voice_input', async function(event) {
+            const transcript = (event && event.transcript || '').toLowerCase();
+            if (
+                transcript.includes('listings') ||
+                transcript.includes('items') ||
+                transcript.includes('auctions') ||
+                transcript.includes('show me') ||
+                transcript.includes('what is available')
+            ) {
+                // Use the auctions array already loaded by the frontend
+                if (!window.auctions || window.auctions.length === 0) {
+                    if (typeof loadAuctions === 'function') {
+                        await loadAuctions();
+                    }
+                }
+                const titles = (window.auctions || []).map(a => a.title).filter(Boolean).join(', ');
+                const speakText = titles
+                    ? `Current auction items are: ${titles}.`
+                    : "There are no auction items listed right now.";
+                window.omnidimensionWebWidget.speak(speakText);
+            }
+        });
+    });
+    </script>
+    <!-- End Omnidimension Voice Chat Integration -->
 
     <script>
         const API_URL = 'http://localhost:8000';
