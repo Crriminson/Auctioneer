@@ -1412,46 +1412,43 @@
         // Create Auction Functions
         async function handleCreateAuction(event) {
             event.preventDefault();
-            
+            // Use the correct form element for reset
+            const form = event.target;
             const title = document.getElementById('auctionTitle').value;
             const description = document.getElementById('auctionDescription').value;
             const startingBid = parseFloat(document.getElementById('startingBid').value);
-            const bidIncrement = parseFloat(document.getElementById('bidIncrement').value);
             const endTime = document.getElementById('endTime').value;
-            const category = document.getElementById('auctionCategory').value;
-            const imageUrl = document.getElementById('auctionImage').value;
-            
-            if (startingBid <= 0 || bidIncrement <= 0) {
-                showMessage('Bid amounts must be positive numbers', 'error');
+
+            if (startingBid <= 0) {
+                showMessage('Starting bid must be a positive number', 'error');
                 return;
             }
-            
+
             if (new Date(endTime) < new Date()) {
                 showMessage('End time must be in the future', 'error');
                 return;
             }
-            
+
             try {
+                // Only send fields required by backend AuctionCreate model
                 const { data, error } = await supabaseClient
                     .from('auctions')
-                    .insert([{
-                        title,
-                        description,
-                        current_bid: startingBid,
-                        minimum_bid: bidIncrement,
-                        end_time: endTime,
-                        status: 'active',
-                        bid_count: 0,
-                        category,
-                        image_url: imageUrl,
-                        created_by: currentUser.id
-                    }])
+                    .insert([
+                        {
+                            title,
+                            description,
+                            minimum_bid: startingBid,
+                            end_time: endTime
+                        }
+                    ])
                     .select();
-                
+
                 if (error) throw error;
-                
+
                 showMessage('Auction created successfully!', 'success');
-                document.getElementById('createAuctionForm').reset();
+                form.reset();
+                // Reload auctions to show the new one
+                await loadAuctions();
                 showSection('auctions');
             } catch (error) {
                 console.error('Error creating auction:', error);
