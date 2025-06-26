@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
+import requests
 
 # Load environment variables
 load_dotenv()
@@ -18,13 +19,17 @@ SUPABASE_URL = "https://hcymzipntbienmdmmjqm.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjeW16aXBudGJpZW5tZG1tanFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2MjI0MjcsImV4cCI6MjA2NjE5ODQyN30.iCH95PpaeF8aO1MNAB9tr72JBZRdDNrzuiASCcFw9ME"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Omnidimension API configuration
+OMNIDIMENSION_API_KEY = "ec21a1cec126397ada88647c4efe2a79"
+OMNIDIMENSION_API_URL = "https://backend.omnidim.io/api/v1"
+
 # FastAPI app
 app = FastAPI(title="Auctioneer API", version="1.0.0")
 
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500"],  # Only allow your frontend origin
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -120,6 +125,21 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+# Omnidimension API helper functions
+async def send_voice_notification(message: str, room_id: str = None):
+    """Send a voice notification using Omnidimension"""
+    try:
+        response = requests.post(
+            f"{OMNIDIMENSION_API_URL}/speak",
+            headers={"Authorization": f"Bearer {OMNIDIMENSION_API_KEY}"},
+            json={"text": message, "room_id": room_id}
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"Error sending voice notification: {e}")
+        return None
+
 # API Routes
 
 @app.on_event("startup")
@@ -145,8 +165,10 @@ async def signup(user: UserCreate):
             "email": user.email,
             "password": user.password
         })
-        
+        # Auto-confirm user for instant login (dev only)
         if response.user:
+            # Patch user to confirmed (bypass email verification)
+            supabase.auth.admin.update_user_by_id(response.user.id, {"email_confirmed": True})
             return {
                 "message": "User created successfully",
                 "user": {
@@ -182,6 +204,15 @@ async def login(user: UserLogin):
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+@app.get("/auth/session")
+async def get_session(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Return current user session info if authenticated, else 401."""
+    try:
+        user = await get_current_user(credentials)
+        return {"user": {"id": user.id, "email": user.email}}
+    except Exception:
+        return {"user": None}
+
 # Auction routes
 @app.get("/auctions", response_model=List[AuctionResponse])
 async def get_auctions(status: Optional[str] = None, limit: int = 50):
@@ -216,13 +247,23 @@ async def get_auction(auction_id: int):
 async def create_auction(auction: AuctionCreate, current_user = Depends(get_current_user)):
     """Create a new auction"""
     try:
-        response = supabase.table('auctions').insert(auction.dict()).select().execute()
+        # Add default values for new auctions
+        auction_data = {
+            **auction.dict(),
+            'status': 'active',
+            'current_bid': auction.minimum_bid,
+            'bid_count': 0,
+            'created_at': datetime.now().isoformat()
+        }
+        
+        response = supabase.table('auctions').insert(auction_data).select().execute()
         
         if response.data:
-            # Broadcast new auction to the relevant auction room (or a general lobby)
-            # For simplicity, we'll just log this for now as there's no "general" room
-            print(f"New auction created: {response.data[0]['id']}")
-            return response.data[0]
+            created_auction = response.data[0]
+            print(f"New auction created: {created_auction['id']}")
+            # Start the cleanup task for this auction
+            asyncio.create_task(schedule_auction_end(created_auction['id'], auction.end_time))
+            return created_auction
         else:
             raise HTTPException(status_code=400, detail="Failed to create auction")
     except Exception as e:
@@ -336,40 +377,291 @@ async def websocket_endpoint(websocket: WebSocket, auction_id: int):
     except WebSocketDisconnect:
         manager.disconnect(websocket, auction_id)
 
-# Background task to end expired auctions
+# Background task to check for expired auctions
 async def end_expired_auctions():
-    """Background task to end auctions that have passed their end time"""
+    """Background task to check and end expired auctions"""
     while True:
         try:
             current_time = datetime.now()
+            print(f"[Auction Cleanup] Checking for expired auctions at {current_time.isoformat()}")
             
-            # Find expired active auctions
-            expired_auctions = supabase.table('auctions').select('*').eq('status', 'active').lt('end_time', current_time.isoformat()).execute()
+            # Find expired auctions that are still active
+            expired_auctions = supabase.table('auctions')\
+                .select('*')\
+                .lt('end_time', current_time.isoformat())\
+                .eq('status', 'active')\
+                .execute()
             
             if expired_auctions.data:
+                print(f"[Auction Cleanup] Found {len(expired_auctions.data)} expired auctions")
                 for auction in expired_auctions.data:
-                    # Update auction status to ended
-                    supabase.table('auctions').update({
-                        "status": "ended",
-                        "updated_at": current_time.isoformat()
-                    }).eq('id', auction['id']).execute()
-                    
-                    # Broadcast auction end
-                    await manager.broadcast_to_auction(json.dumps({
-                        "type": "auction_ended",
-                        "data": auction
-                    }), auction['id'])
+                    try:
+                        auction_id = auction['id']
+                        print(f"[Auction Cleanup] Processing auction ID {auction_id}...")
+                        
+                        # 1. Find the winner (highest bidder)
+                        winner_bid = supabase.table('bids')\
+                            .select('*')\
+                            .eq('auction_id', auction_id)\
+                            .order('amount', desc=True)\
+                            .limit(1)\
+                            .execute()
+                        
+                        if winner_bid.data:
+                            # 2. Store winner information
+                            winner = winner_bid.data[0]
+                            winner_entry = {
+                                'auction_id': auction_id,
+                                'auction_title': auction['title'],
+                                'user_id': winner['user_id'],
+                                'user_email': winner['user_email'],
+                                'amount': winner['amount'],
+                                'created_at': datetime.now().isoformat()
+                            }
+                            
+                            supabase.table('winners').insert(winner_entry).execute()
+                            
+                            # Send notification about the winner
+                            winner_message = f"Auction for {auction['title']} has ended. Winner is {winner['user_email']} with bid of ₹{winner['amount']}"
+                            await send_voice_notification(winner_message)
+                            print(f"[Auction Cleanup] {winner_message}")
+                        
+                        # 3. Mark auction as ended
+                        supabase.table('auctions')\
+                            .update({'status': 'ended'})\
+                            .eq('id', auction_id)\
+                            .execute()
+                        
+                        # 4. Delete all bids for this auction
+                        try:
+                            bids_delete_resp = supabase.table('bids')\
+                                .delete()\
+                                .eq('auction_id', auction_id)\
+                                .execute()
+                            print(f"[Auction Cleanup] Bids delete response for auction {auction_id}: {bids_delete_resp}")
+                        except Exception as del_bids_exc:
+                            print(f"[Auction Cleanup] Error deleting bids for auction {auction_id}: {del_bids_exc}")
+
+                        # 5. Delete the auction
+                        try:
+                            auction_delete_resp = supabase.table('auctions')\
+                                .delete()\
+                                .eq('id', auction_id)\
+                                .execute()
+                            print(f"[Auction Cleanup] Auction delete response for auction {auction_id}: {auction_delete_resp}")
+                        except Exception as del_auction_exc:
+                            print(f"[Auction Cleanup] Error deleting auction {auction_id}: {del_auction_exc}")
+                        
+                        print(f"[Auction Cleanup] Successfully processed and removed auction {auction_id}")
+                        
+                    except Exception as e:
+                        print(f"[Auction Cleanup] Error processing auction {auction_id}: {str(e)}")
+                        continue
             
-            # Sleep for 30 seconds before checking again
-            await asyncio.sleep(30)
+            await asyncio.sleep(30)  # Check every 30 seconds
+            
         except Exception as e:
-            print(f"Error in background task: {e}")
+            print(f"Error in auction cleanup: {e}")
             await asyncio.sleep(60)  # Wait longer if there's an error
 
 # Start background task
 @app.on_event("startup")
 async def startup_background_tasks():
     asyncio.create_task(end_expired_auctions())
+
+# Schedule auction end
+async def schedule_auction_end(auction_id: int, end_time: datetime):
+    """Schedule the end of an auction"""
+    try:
+        # Calculate seconds until auction end
+        time_until_end = (end_time - datetime.now()).total_seconds()
+        if time_until_end > 0:
+            print(f"[Auction Scheduler] Scheduling end for auction {auction_id} in {time_until_end} seconds")
+            await asyncio.sleep(time_until_end)
+            await end_auction(auction_id)
+    except Exception as e:
+        print(f"Error scheduling auction end: {e}")
+
+# Improved end auction function
+async def end_auction(auction_id: int):
+    """End an auction immediately"""
+    try:
+        # Get auction details
+        auction_response = supabase.table('auctions')\
+            .select('*')\
+            .eq('id', auction_id)\
+            .eq('status', 'active')\
+            .single()\
+            .execute()
+
+        if not auction_response.data:
+            print(f"[Auction End] Auction {auction_id} not found or already ended")
+            return
+
+        auction = auction_response.data
+        
+        # Get highest bid
+        bids = supabase.table('bids')\
+            .select('*')\
+            .eq('auction_id', auction_id)\
+            .order('amount', desc=True)\
+            .limit(1)\
+            .execute()
+        
+        if bids.data:
+            winner_bid = bids.data[0]
+            winner_message = f"Auction for {auction['title']} has ended. Winner is {winner_bid['user_email']} with bid of ₹{winner_bid['amount']}"
+            
+            # Store winner
+            winner_result = supabase.table('winners').insert({
+                'auction_id': auction_id,
+                'user_id': winner_bid['user_id'],
+                'user_email': winner_bid['user_email'],
+                'amount': winner_bid['amount'],
+                'created_at': datetime.now().isoformat()
+            }).execute()
+            
+            # Send voice notification
+            await send_voice_notification(winner_message)
+            print(f"[Auction End] {winner_message}")
+        
+        # Update auction status to ended
+        update_result = supabase.table('auctions')\
+            .update({'status': 'ended'})\
+            .eq('id', auction_id)\
+            .execute()
+            
+        # Broadcast auction end
+        try:
+            await manager.broadcast_to_auction(
+                json.dumps({
+                    "type": "auction_ended",
+                    "data": {
+                        **auction,
+                        "status": "ended",
+                        "winner": bids.data[0] if bids.data else None
+                    }
+                }),
+                auction_id
+            )
+        except Exception as e:
+            print(f"[Auction End] Failed to broadcast auction end: {e}")
+        
+        print(f"[Auction End] Successfully ended auction {auction_id}")
+        
+    except Exception as e:
+        print(f"[Auction End] Error ending auction {auction_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Voice command routes
+@app.post("/voice/command")
+async def handle_voice_command(command: Dict[str, Any]):
+    """Handle voice commands from Omnidimension"""
+    try:
+        transcript = command.get('transcript', '').lower()
+        
+        # Command: End auction
+        if 'end auction' in transcript:
+            auction_id = extract_auction_id(transcript)
+            if auction_id:
+                await end_auction(auction_id)
+                return {"message": f"Auction {auction_id} ended successfully"}
+        
+        # Command: Get auction status
+        elif 'auction status' in transcript or 'get status' in transcript:
+            auction_id = extract_auction_id(transcript)
+            if auction_id:
+                status = await get_auction_status(auction_id)
+                await send_voice_notification(status)
+                return {"message": status}
+        
+        # Command: List active auctions
+        elif 'list auctions' in transcript or 'show auctions' in transcript:
+            auctions = await list_active_auctions()
+            response = "Current active auctions: " + ", ".join([f"{a['title']} at ₹{a['current_bid']}" for a in auctions])
+            await send_voice_notification(response)
+            return {"message": response}
+        
+        return {"message": "Command not recognized"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def extract_auction_id(transcript: str) -> Optional[int]:
+    """Extract auction ID from voice command"""
+    try:
+        words = transcript.split()
+        for i, word in enumerate(words):
+            if word.isdigit():
+                return int(word)
+        return None
+    except:
+        return None
+
+async def end_auction(auction_id: int):
+    """End an auction immediately"""
+    try:
+        auction = supabase.table('auctions').select('*').eq('id', auction_id).single().execute()
+        if not auction.data:
+            raise HTTPException(status_code=404, detail="Auction not found")
+        
+        # Process auction ending
+        bids = supabase.table('bids').select('*').eq('auction_id', auction_id).order('amount', desc=True).limit(1).execute()
+        
+        if bids.data:
+            winner_bid = bids.data[0]
+            await send_voice_notification(f"Ending auction {auction_id}. Winner is {winner_bid['user_email']} with bid of ₹{winner_bid['amount']}")
+            
+            # Store winner
+            supabase.table('winners').insert({
+                'auction_id': auction_id,
+                'user_id': winner_bid['user_id'],
+                'user_email': winner_bid['user_email'],
+                'amount': winner_bid['amount'],
+                'created_at': datetime.now().isoformat()
+            }).execute()
+        
+        # Delete auction
+        supabase.table('auctions').delete().eq('id', auction_id).execute()
+        
+        # Broadcast to WebSocket
+        await manager.broadcast_to_auction(
+            json.dumps({
+                "type": "auction_ended",
+                "data": {**auction.data, "winner": bids.data[0] if bids.data else None}
+            }),
+            auction_id
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def get_auction_status(auction_id: int) -> str:
+    """Get auction status for voice response"""
+    try:
+        auction = supabase.table('auctions').select('*').eq('id', auction_id).single().execute()
+        if not auction.data:
+            return f"Auction {auction_id} not found"
+        
+        end_time = datetime.fromisoformat(auction.data['end_time'].replace('Z', '+00:00'))
+        time_left = end_time - datetime.now()
+        
+        return (
+            f"Auction {auction_id} for {auction.data['title']} "
+            f"has current bid of ₹{auction.data['current_bid']} "
+            f"and {time_left.seconds // 3600} hours {(time_left.seconds // 60) % 60} minutes remaining"
+        )
+    except Exception as e:
+        return f"Error getting auction status: {str(e)}"
+
+async def list_active_auctions() -> List[Dict[str, Any]]:
+    """Get list of active auctions"""
+    try:
+        response = supabase.table('auctions').select('*').eq('status', 'active').execute()
+        return response.data or []
+    except Exception as e:
+        print(f"Error listing active auctions: {e}")
+        return []
 
 if __name__ == "__main__":
     import uvicorn
