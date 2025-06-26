@@ -287,23 +287,30 @@ async def update_auction(auction_id: int, auction: AuctionUpdate, current_user =
 # Bidding routes
 @app.post("/bids")
 async def place_bid(bid: BidCreate, current_user = Depends(get_current_user)):
-    """Place a bid on an auction"""
+    """Place a bid on an auction (no RPC, pure Python logic)"""
     try:
-        # Call the database function to handle the bid atomically
-        response = supabase.rpc('place_bid', {
-            'auction_id_param': bid.auction_id,
-            'bid_amount': bid.amount,
-            'user_id_param': str(current_user.id)
+        # Fetch the auction
+        auction_resp = supabase.table('auctions').select('*').eq('id', bid.auction_id).single().execute()
+        auction = auction_resp.data
+        if not auction or auction['status'] != 'active':
+            raise HTTPException(status_code=400, detail="Auction not active or not found")
+        if bid.amount is None or bid.amount < auction['minimum_bid'] or bid.amount <= auction['current_bid']:
+            raise HTTPException(status_code=400, detail="Bid too low")
+        # Insert the bid
+        supabase.table('bids').insert({
+            'auction_id': bid.auction_id,
+            'user_id': str(current_user.id),
+            'user_email': current_user.email,
+            'amount': bid.amount,
+            'created_at': datetime.now().isoformat()
         }).execute()
-
-        result = response.data[0]
-        if not result['success']:
-            raise HTTPException(status_code=400, detail=result['message'])
-
-        # Fetch the updated auction details to broadcast
-        auction_response = supabase.table('auctions').select('*').eq('id', bid.auction_id).single().execute()
-        
+        # Update the auction's current bid and bid count
+        supabase.table('auctions').update({
+            'current_bid': bid.amount,
+            'bid_count': auction['bid_count'] + 1
+        }).eq('id', bid.auction_id).execute()
         # Broadcast the new bid to all clients
+        auction_resp = supabase.table('auctions').select('*').eq('id', bid.auction_id).single().execute()
         await manager.broadcast_to_auction(json.dumps({
             "type": "new_bid",
             "data": {
@@ -311,15 +318,13 @@ async def place_bid(bid: BidCreate, current_user = Depends(get_current_user)):
                 "amount": bid.amount,
                 "user_id": str(current_user.id),
                 "user_email": current_user.email,
-                "auction": auction_response.data
+                "auction": auction_resp.data
             }
         }), bid.auction_id)
-
-        return {"message": result['message']}
+        return {"message": "Bid placed successfully!"}
+    except HTTPException:
+        raise
     except Exception as e:
-        # Catch exceptions from the RPC call or other issues
-        if isinstance(e, HTTPException):
-            raise e
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @app.get("/auctions/{auction_id}/bids", response_model=List[BidResponse])
@@ -559,6 +564,55 @@ async def handle_voice_command(command: Dict[str, Any]):
     """Handle voice commands from Omnidimension"""
     try:
         transcript = command.get('transcript', '').lower()
+        
+        # Command: Place bid (e.g., 'bid 500 on auction 3')
+        if transcript.startswith('bid') or 'bid' in transcript:
+            import re
+            match = re.search(r"bid (\d+(?:\.\d+)?) (?:on )?auction (\d+)", transcript)
+            if match:
+                amount = float(match.group(1))
+                auction_id = int(match.group(2))
+                # Use a default/system user for Omnidimension bids
+                system_user = {
+                    'id': 'omnidimension-system',
+                    'email': 'omnidimension@system.local'
+                }
+                try:
+                    # Fetch the auction
+                    auction_resp = supabase.table('auctions').select('*').eq('id', auction_id).single().execute()
+                    auction = auction_resp.data
+                    if not auction or auction['status'] != 'active':
+                        msg = "Auction not active or not found"
+                        await send_voice_notification(msg)
+                        return {"message": msg}
+                    if amount is None or amount < auction['minimum_bid'] or amount <= auction['current_bid']:
+                        msg = "Bid too low"
+                        await send_voice_notification(msg)
+                        return {"message": msg}
+                    # Insert the bid
+                    supabase.table('bids').insert({
+                        'auction_id': auction_id,
+                        'user_id': str(system_user['id']),
+                        'user_email': system_user['email'],
+                        'amount': amount,
+                        'created_at': datetime.now().isoformat()
+                    }).execute()
+                    # Update the auction's current bid and bid count
+                    supabase.table('auctions').update({
+                        'current_bid': amount,
+                        'bid_count': auction['bid_count'] + 1
+                    }).eq('id', auction_id).execute()
+                    msg = f"Bid of ₹{amount} placed on auction {auction_id} by Omnidimension."
+                    await send_voice_notification(msg)
+                    return {"message": msg}
+                except Exception as e:
+                    msg = f"Error placing bid: {str(e)}"
+                    await send_voice_notification(msg)
+                    return {"message": msg}
+            else:
+                msg = "Could not understand bid command. Please say, for example, 'bid 500 on auction 3'."
+                await send_voice_notification(msg)
+                return {"message": msg}
         
         # Command: End auction
         if 'end auction' in transcript:

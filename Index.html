@@ -1698,6 +1698,43 @@
             if (minutes > 0) return `${minutes}m ${seconds}s`;
             return `${seconds}s`;
         }
+
+        // Place Bid Function (frontend-only, direct to backend API, with debug)
+        async function placeBid(auctionId, amount) {
+            try {
+                console.log('placeBid called with', auctionId, amount);
+                if (!currentUser || !currentUser.access_token) {
+                    showMessage('You must be logged in to place a bid.', 'error');
+                    return;
+                }
+                if (!amount || isNaN(amount) || amount <= 0) {
+                    showMessage('Please enter a valid bid amount.', 'error');
+                    return;
+                }
+                if (amount > 99999999.99) {
+                    showMessage('Bid amount cannot exceed ₹99,999,999.99', 'error');
+                    return;
+                }
+                const response = await fetch(`${API_URL}/bids`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentUser.access_token}`
+                    },
+                    body: JSON.stringify({ auction_id: auctionId, amount: parseFloat(amount) })
+                });
+                const data = await response.json();
+                console.log('Bid API response:', response.status, data);
+                if (!response.ok) {
+                    showMessage(data.detail || data.message || 'Bid failed', 'error');
+                    return;
+                }
+                showMessage(data.message || 'Bid placed successfully!', 'success');
+                await loadAuctions(); // Refresh auction list
+            } catch (error) {
+                showMessage('Failed to place bid: ' + error.message, 'error');
+            }
+        }
     </script>
 </body>
 </html>
